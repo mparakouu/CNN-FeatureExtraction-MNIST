@@ -6,6 +6,8 @@ import torchvision.datasets as datasets
 from torch.utils.data import DataLoader, random_split
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
+from torch.utils.data import SubsetRandomSampler
 import ssl
 
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -39,8 +41,22 @@ transform = transforms.Compose([
     transforms.Normalize((0.5,), (0.5,))
 ])
 
+
 # load dataset
 dataset = datasets.MNIST(root='../Thedata', train=True, download=True, transform=transform)
+
+def sample_of_classes(dataset):
+    classes = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
+    plt.figure(figsize=(10, 5))
+    for k in range(len(classes)):
+        plt.subplot(2, 5, k + 1)
+        sample_image = dataset.data[dataset.targets == k][0]
+        plt.imshow(sample_image.squeeze().numpy(), cmap='gray')
+        plt.title(f'Class {classes[k]}')
+        plt.axis('off')
+    plt.tight_layout()
+    plt.show()
+sample_of_classes(dataset)
 
 # train : 80% , validation : 100 - 80 = 20%
 training = int(0.8 * len(dataset)) 
@@ -77,7 +93,6 @@ def train(model, device, epoch, trainData_loader, optimizer):
                 epoch, batch_idx * len(data), len(trainData_loader.dataset),
                 100. * batch_idx / len(trainData_loader), loss.item()))
     return train_loss / len(trainData_loader)
-
 
 # check how it works after training 
 def validate(model, device, valData_loader):
@@ -125,27 +140,7 @@ for epoch in range(1, num_epochs + 1): # 1 to 10
     validate_losses.append(val_loss)
 
 test_dataset = datasets.MNIST(root='../Thedata', train=False, download=True, transform=transform)
-testData_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-
-
-
-
-def test(model, device, testData_loader):
-    model.eval()
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for data, target in testData_loader:
-            data, target = data.to(device), target.to(device)
-            outputs = model(data)
-            _, predicted = torch.max(outputs.data, 1)
-            total += target.size(0)
-            correct += (predicted == target).sum().item()
-    
-    accuracy = correct / total
-    print('Accuracy on test set: {:.2f}%'.format(accuracy * 100))
-    return accuracy
-
+testData_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False) # test data in batches
 
 plt.figure(figsize=(10, 7))
 plt.plot(range(1, num_epochs + 1), training_losses, label='training loss', color='purple')
@@ -158,16 +153,33 @@ plt.show()
 
 
 
-def sample_of_classes(dataset):
-    classes = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
-    plt.figure(figsize=(10, 5))
-    for k in range(len(classes)):
-        plt.subplot(2, 5, k + 1)
-        sample_image = dataset.data[dataset.targets == k][0]
-        plt.imshow(sample_image.squeeze().numpy(), cmap='gray')
-        plt.title(f'Class {classes[k]}')
-        plt.axis('off')
-    plt.tight_layout()
-    plt.show()
+def accurancy_ConfMatrix(model, device, testData_loader):
+    model.eval()
+    total_number = 0  # total num of examples
+    correct_predictions = 0  # correct predictions
+    all_targets = []
+    all_predictions = []
 
-sample_of_classes(dataset)
+    with torch.no_grad():
+        for data, target in testData_loader: # data , "real" labels --> save
+            data, target = data.to(device), target.to(device)
+            outputs = model(data)  # data through model 
+            _, predicted = torch.max(outputs.data, 1)  # highest / predicted  
+            total_number += target.size(0)  # ++
+            correct_predictions += (predicted == target).sum().item()  # num of correct predictions --> add to correct_predictions
+            all_targets.extend(target.cpu().numpy()) # real  "labels"
+            all_predictions.extend(predicted.cpu().numpy()) # data
+
+    accuracy = correct_predictions / total_number 
+    print('Accuracy of the Neural Network: {:.2f}%'.format(accuracy * 100))
+
+
+    ConfMatrix = confusion_matrix(all_targets, all_predictions)
+    return accuracy, ConfMatrix
+
+accuracy, ConfMatrix = accurancy_ConfMatrix(model, device, testData_loader)
+print(f"Accuracy: {accuracy}")
+print(f"Confusion Matrix:\n{ConfMatrix}")
+
+
+
